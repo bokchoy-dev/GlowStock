@@ -34,6 +34,11 @@
             </select>
 
             <button id="sortDateBtn" class="btn-filter">Sort by Date ↕</button>
+            <button id="sortPriceBtn" class="btn-filter">Sort by Price ↕</button>
+
+            <label class="hide-used-label">
+                <input type="checkbox" id="hideUsedCheck"> Hide Used Up
+            </label>
         </section>
 
         <!-- Product Grid -->
@@ -169,8 +174,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Product Picture *</label>
-                    <input type="file" id="prodImage" accept="image/*" required>
+                    <label>Product Picture</label>
+                    <input type="file" id="prodImage" accept="image/*">
                 </div>
                 <div class="form-group">
                     <label>Rating (1-5 Stars)</label>

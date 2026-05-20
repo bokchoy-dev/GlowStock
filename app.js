@@ -17,25 +17,8 @@ const initialProducts = [
 
 let products = JSON.parse(localStorage.getItem('makeup_inventory')) || initialProducts;
 let currentSortAsc = true;
+let priceSortAsc = true;
 let activeProduct = null;
-
-// Fetches the master data file from your GitHub repository if local storage is blank
-async function loadDatabase() {
-    if (!localStorage.getItem('makeup_inventory')) {
-        try {
-            const response = await fetch('products.json');
-            if (response.ok) {
-                const data = await response.json();
-                products = data;
-                saveToLocalStorage();
-                renderGrid();
-                updateCategoryDropdowns();
-            }
-        } catch (error) {
-            console.log("No initial products.json found yet, using default template.");
-        }
-    }
-}
 
 // DOM Elements
 const productGrid = document.getElementById('productGrid');
@@ -43,8 +26,9 @@ const searchBar = document.getElementById('searchBar');
 const categoryFilter = document.getElementById('categoryFilter');
 const statusFilter = document.getElementById('statusFilter');
 const sortDateBtn = document.getElementById('sortDateBtn');
+const sortPriceBtn = document.getElementById('sortPriceBtn');
+const hideUsedCheck = document.getElementById('hideUsedCheck');
 const exportBtn = document.getElementById('exportBtn');
-const modalDeleteBtn = document.getElementById('modalDeleteBtn');
 
 // Modals
 const detailModal = document.getElementById('detailModal');
@@ -56,6 +40,7 @@ const addProductForm = document.getElementById('addProductForm');
 const editProductForm = document.getElementById('editProductForm');
 const addNewCategoryBtn = document.getElementById('addNewCategoryBtn');
 const prodCategorySelect = document.getElementById('prodCategory');
+const modalDeleteBtn = document.getElementById('modalDeleteBtn');
 
 // Editable Detail Modal Elements
 const modalImage = document.getElementById('modalImage');
@@ -74,11 +59,15 @@ function saveToLocalStorage() {
     localStorage.setItem('makeup_inventory', JSON.stringify(products));
 }
 
+// 1. Fixed: Categories now sort alphabetically automatically
 function updateCategoryDropdowns() {
     const uniqueCategories = [...new Set(products.map(p => p.category))];
     if (uniqueCategories.length === 0) {
         uniqueCategories.push("Lipstick", "Foundation", "Blush", "Eyeshadow");
     }
+    
+    // Sort strings in alphabetical order
+    uniqueCategories.sort((a, b) => a.localeCompare(b));
 
     const savedFilterValue = categoryFilter.value;
     categoryFilter.innerHTML = '<option value="all">All Categories</option>';
@@ -110,8 +99,9 @@ function renderGrid() {
             
         const matchesCategory = categoryFilter.value === 'all' || product.category === categoryFilter.value;
         const matchesStatus = statusFilter.value === 'all' || product.status === statusFilter.value;
+        const matchesHideUsed = !hideUsedCheck.checked || product.status !== "Used Up";
         
-        return matchesSearch && matchesCategory && matchesStatus;
+        return matchesSearch && matchesCategory && matchesStatus && matchesHideUsed;
     });
 
     filtered.forEach(product => {
@@ -119,14 +109,25 @@ function renderGrid() {
         if (product.status === "Brand New") badgeClass = "badge-brand-new";
         if (product.status === "Used Up") badgeClass = "badge-used-up";
 
-        // Display cost on the main screen card layout if it exists
-        const formattedCost = product.cost ? `HKD$${product.cost}` : '—';
+        const formattedCost = product.cost ? `HKD$${product.cost}` : 'HKD$0';
+
+        // 2. Fixed: Handle image rendering fallback cleanly
+        let imageHTML = '';
+        if (product.image && product.image.startsWith('data:image') || product.image.startsWith('http')) {
+            imageHTML = `<img src="${product.image}" alt="${product.name}">`;
+        } else {
+            imageHTML = `
+                <div class="no-image-placeholder">
+                    <span>✨</span>
+                    ${product.brand}<br>${product.name}
+                </div>`;
+        }
 
         const card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = `
             <span class="badge ${badgeClass}">${product.status}</span>
-            <img src="${product.image}" alt="${product.name}">
+            ${imageHTML}
             <div class="card-content">
                 <p class="card-category"><strong>${product.brand}</strong> — ${product.category} ${product.size ? `(${product.size})` : ''}</p>
                 <h3 class="card-title">${product.name}</h3>
@@ -141,7 +142,13 @@ function renderGrid() {
 function openModal(product) {
     activeProduct = product;
     
-    modalImage.src = product.image;
+    if (product.image && (product.image.startsWith('data:image') || product.image.startsWith('http'))) {
+        modalImage.src = product.image;
+        modalImage.style.display = "block";
+    } else {
+        modalImage.style.display = "none"; // Hide standard modal img tag if it's utilizing text fallback
+    }
+    
     modalBrandInput.value = product.brand;
     modalNameInput.value = product.name;
     modalCategorySelect.value = product.category;
@@ -158,10 +165,8 @@ function openModal(product) {
 
 closeModal.addEventListener('click', () => detailModal.classList.add('hidden'));
 
-// Edit submission logic incorporating costs
 editProductForm.addEventListener('submit', function(e) {
     e.preventDefault();
-    
     if (activeProduct) {
         activeProduct.brand = modalBrandInput.value;
         activeProduct.name = modalNameInput.value;
@@ -177,32 +182,22 @@ editProductForm.addEventListener('submit', function(e) {
         saveToLocalStorage();
         updateCategoryDropdowns();
         renderGrid();
-        
         detailModal.classList.add('hidden');
     }
 });
 
-// Handle deleting an item permanently from local storage
 modalDeleteBtn.addEventListener('click', function() {
     if (activeProduct) {
-        // Pop up a quick verification window so you don't accidentally click it
-        const confirmDelete = confirm(`Are you sure you want to remove "${activeProduct.brand} - ${activeProduct.name}" from your inventory?`);
-        
+        const confirmDelete = confirm(`Are you sure you want to remove "${activeProduct.brand} - ${activeProduct.name}"?`);
         if (confirmDelete) {
-            // Filter the array to keep every item EXCEPT the active product ID
             products = products.filter(product => product.id !== activeProduct.id);
-            
-            // Save the updated list back to your browser storage and refresh screen view
             saveToLocalStorage();
             updateCategoryDropdowns();
             renderGrid();
-            
-            // Close the pop-up modal layer
             detailModal.classList.add('hidden');
         }
     }
 });
-
 
 openFormBtn.addEventListener('click', () => formModal.classList.remove('hidden'));
 closeFormModal.addEventListener('click', () => formModal.classList.add('hidden'));
@@ -219,18 +214,16 @@ addNewCategoryBtn.addEventListener('click', () => {
     }
 });
 
-// Create item submission tracking incorporating costs
+// 3. Fixed: Picture is optional. Saves text placeholder metadata if empty.
 addProductForm.addEventListener('submit', function(e) {
     e.preventDefault();
 
     const fileInput = document.getElementById('prodImage');
     const file = fileInput.files[0];
-    const reader = new FileReader();
+    const costValue = document.getElementById('prodCost').value;
 
-    reader.onloadend = function() {
-        const costValue = document.getElementById('prodCost').value;
-
-        const newProduct = {
+    const buildProductObject = (imageResult) => {
+        return {
             id: Date.now().toString(),
             brand: document.getElementById('prodBrand').value,
             name: document.getElementById('prodName').value,
@@ -238,26 +231,37 @@ addProductForm.addEventListener('submit', function(e) {
             color: document.getElementById('prodColor').value,
             size: document.getElementById('prodSize').value,
             purchaseDate: document.getElementById('prodDate').value,
-            cost: costValue ? parseFloat(costValue) : '',
+            cost: costValue ? parseFloat(costValue) : '', // Empty interpreted as blank string initially
             status: document.getElementById('prodStatus').value,
             rating: parseInt(document.getElementById('prodRating').value),
             description: document.getElementById('prodDesc').value,
-            image: reader.result
+            image: imageResult
         };
-
-        products.push(newProduct);
-        saveToLocalStorage();
-        updateCategoryDropdowns();
-        renderGrid();
-        
-        addProductForm.reset();
-        formModal.classList.add('hidden');
     };
 
     if (file) {
+        const reader = new FileReader();
+        reader.onloadend = function() {
+            const newProduct = buildProductObject(reader.result);
+            products.push(newProduct);
+            finalizeProductAdd();
+        };
         reader.readAsDataURL(file);
+    } else {
+        // Fallback flag string used to mark card as text placeholder structure
+        const newProduct = buildProductObject('PLACEHOLDER_TXT');
+        products.push(newProduct);
+        finalizeProductAdd();
     }
 });
+
+function finalizeProductAdd() {
+    saveToLocalStorage();
+    updateCategoryDropdowns();
+    renderGrid();
+    addProductForm.reset();
+    formModal.classList.add('hidden');
+}
 
 sortDateBtn.addEventListener('click', () => {
     currentSortAsc = !currentSortAsc;
@@ -265,6 +269,17 @@ sortDateBtn.addEventListener('click', () => {
         const dateA = new Date(a.purchaseDate);
         const dateB = new Date(b.purchaseDate);
         return currentSortAsc ? dateA - dateB : dateB - dateA;
+    });
+    renderGrid();
+});
+
+// 4. Fixed: Added Sort by Price Logic (Treats empty fields as 0)
+sortPriceBtn.addEventListener('click', () => {
+    priceSortAsc = !priceSortAsc;
+    products.sort((a, b) => {
+        const priceA = a.cost ? parseFloat(a.cost) : 0;
+        const priceB = b.cost ? parseFloat(b.cost) : 0;
+        return priceSortAsc ? priceA - priceB : priceB - priceA;
     });
     renderGrid();
 });
@@ -279,13 +294,28 @@ exportBtn.addEventListener('click', () => {
     downloadAnchor.remove();
 });
 
+async function loadDatabase() {
+    if (!localStorage.getItem('makeup_inventory')) {
+        try {
+            const response = await fetch('products.json');
+            if (response.ok) {
+                const data = await response.json();
+                products = data;
+                saveToLocalStorage();
+                renderGrid();
+                updateCategoryDropdowns();
+            }
+        } catch (error) {
+            console.log("No initial products.json found yet.");
+        }
+    }
+}
+
 searchBar.addEventListener('input', renderGrid);
 categoryFilter.addEventListener('change', renderGrid);
 statusFilter.addEventListener('change', renderGrid);
+hideUsedCheck.addEventListener('change', renderGrid);
 
-
-
-// 2. Initial Setup Launch Sequences (Make sure loadDatabase() is at the bottom)
 updateCategoryDropdowns();
 renderGrid();
 loadDatabase();

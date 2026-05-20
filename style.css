@@ -257,3 +257,44 @@ button:hover {
     background: #ff4757 !important; /* Bright Coral Red */
     color: white;
 }
+
+.hide-used-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 10px;
+    user-select: none;
+}
+
+.hide-used-label input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+
+/* Placeholder layout when no image is uploaded */
+.no-image-placeholder {
+    width: 100%;
+    height: 200px;
+    background: linear-gradient(135deg, #ffeef0 0%, #fce4e6 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #b57c83;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #fae1e3;
+}
+
+.no-image-placeholder span {
+    font-size: 24px;
+    margin-bottom: 6px;
+}
