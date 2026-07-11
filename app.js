@@ -29,6 +29,7 @@ const sortDateBtn = document.getElementById('sortDateBtn');
 const sortPriceBtn = document.getElementById('sortPriceBtn');
 const hideUsedCheck = document.getElementById('hideUsedCheck');
 const exportBtn = document.getElementById('exportBtn');
+const syncBtn = document.getElementById('syncBtn');
 
 // Modals
 const detailModal = document.getElementById('detailModal');
@@ -292,6 +293,14 @@ exportBtn.addEventListener('click', () => {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+});
+
+syncBtn.addEventListener('click', function() {
+    const confirmSync = confirm("This will clear your current screen and download the master inventory file from GitHub. Proceed?");
+    if (confirmSync) {
+        localStorage.removeItem('makeup_inventory'); // Wipes local memory slot
+        window.location.reload(); // Reloads page, forcing loadDatabase() to run fresh
+    }
 });
 
 async function loadDatabase() {
