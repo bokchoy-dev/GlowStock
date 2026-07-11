@@ -307,15 +307,22 @@ async function loadDatabase() {
     if (!localStorage.getItem('makeup_inventory')) {
         try {
             const response = await fetch('products.json');
-            if (response.ok) {
-                const data = await response.json();
-                products = data;
-                saveToLocalStorage();
-                renderGrid();
-                updateCategoryDropdowns();
+            
+            // Check if the file actually exists on GitHub
+            if (!response.ok) {
+                throw new Error(`Could not find products.json on your server (Status: ${response.status}). Check your file name capitalization!`);
             }
+            
+            const data = await response.json();
+            products = data;
+            saveToLocalStorage();
+            renderGrid();
+            updateCategoryDropdowns();
+            
         } catch (error) {
-            console.log("No initial products.json found yet.");
+            // This will now pop up an alert box on your screen telling you the exact error
+            alert("Database Load Error: " + error.message + "\n\nFalling back to default template.");
+            console.error(error);
         }
     }
 }
