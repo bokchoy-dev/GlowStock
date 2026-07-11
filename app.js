@@ -215,45 +215,79 @@ addNewCategoryBtn.addEventListener('click', () => {
     }
 });
 
+
+// Automatically resizes and compresses an image file to keep LocalStorage happy
+function compressImage(file, maxWidth = 300, quality = 0.6) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Scale down the image dimensions if it's too wide
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Convert to compressed JPEG data string
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressedDataUrl);
+            };
+            img.onerror = err => reject(err);
+        };
+        reader.onerror = err => reject(err);
+    });
+}
+
+
 // 3. Fixed: Picture is optional. Saves text placeholder metadata if empty.
-addProductForm.addEventListener('submit', function(e) {
+// Handles adding a new product with automatic image compression
+addProductForm.addEventListener('submit', async function(e) {
     e.preventDefault();
 
     const fileInput = document.getElementById('prodImage');
     const file = fileInput.files[0];
     const costValue = document.getElementById('prodCost').value;
+    let finalImage = 'PLACEHOLDER_TXT';
 
-    const buildProductObject = (imageResult) => {
-        return {
-            id: Date.now().toString(),
-            brand: document.getElementById('prodBrand').value,
-            name: document.getElementById('prodName').value,
-            category: document.getElementById('prodCategory').value,
-            color: document.getElementById('prodColor').value,
-            size: document.getElementById('prodSize').value,
-            purchaseDate: document.getElementById('prodDate').value,
-            cost: costValue ? parseFloat(costValue) : '', // Empty interpreted as blank string initially
-            status: document.getElementById('prodStatus').value,
-            rating: parseInt(document.getElementById('prodRating').value),
-            description: document.getElementById('prodDesc').value,
-            image: imageResult
-        };
+    // If a file exists, compress it first!
+    if (file) {
+        try {
+            finalImage = await compressImage(file, 300, 0.6); // Max width 300px, 60% quality
+        } catch (error) {
+            console.error("Compression failed, using fallback text:", error);
+        }
+    }
+
+    const newProduct = {
+        id: Date.now().toString(),
+        brand: document.getElementById('prodBrand').value,
+        name: document.getElementById('prodName').value,
+        category: document.getElementById('prodCategory').value,
+        color: document.getElementById('prodColor').value,
+        size: document.getElementById('prodSize').value,
+        purchaseDate: document.getElementById('prodDate').value,
+        cost: costValue ? parseFloat(costValue) : '',
+        status: document.getElementById('prodStatus').value,
+        rating: parseInt(document.getElementById('prodRating').value),
+        description: document.getElementById('prodDesc').value,
+        image: finalImage
     };
 
-    if (file) {
-        const reader = new FileReader();
-        reader.onloadend = function() {
-            const newProduct = buildProductObject(reader.result);
-            products.push(newProduct);
-            finalizeProductAdd();
-        };
-        reader.readAsDataURL(file);
-    } else {
-        // Fallback flag string used to mark card as text placeholder structure
-        const newProduct = buildProductObject('PLACEHOLDER_TXT');
-        products.push(newProduct);
-        finalizeProductAdd();
-    }
+    products.push(newProduct);
+    finalizeProductAdd();
 });
 
 function finalizeProductAdd() {
