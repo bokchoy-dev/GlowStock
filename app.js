@@ -60,14 +60,62 @@ function saveToLocalStorage() {
     localStorage.setItem('makeup_inventory', JSON.stringify(products));
 }
 
-// 1. Fixed: Categories now sort alphabetically automatically
+// Helper to detect mobile devices safely
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+}
+
+// Helper to match categories to cute emojis dynamically for mobile view fallback
+function getEmojiForCategory(category) {
+    const cat = category ? category.toLowerCase() : '';
+    if (cat.includes('lip')) return '💄';
+    if (cat.includes('foundation') || cat.includes('cushion') || cat.includes('base') || cat.includes('powder')) return '🧴';
+    if (cat.includes('blush') || cat.includes('cheek')) return '🌸';
+    if (cat.includes('eye') || cat.includes('shadow') || cat.includes('palette')) return '👁️';
+    if (cat.includes('mascara') || cat.includes('liner')) return '✏️';
+    if (cat.includes('nail')) return '💅';
+    if (cat.includes('perfume') || cat.includes('scent')) return '⚱️';
+    if (cat.includes('brush') || cat.includes('tool')) return '🖌️';
+    return '✨';
+}
+
+// Automatically resizes and compresses image files when uploading on PC
+function compressImage(file, maxWidth = 400, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.onerror = err => reject(err);
+        };
+        reader.onerror = err => reject(err);
+    });
+}
+
 function updateCategoryDropdowns() {
     const uniqueCategories = [...new Set(products.map(p => p.category))];
     if (uniqueCategories.length === 0) {
         uniqueCategories.push("Lipstick", "Foundation", "Blush", "Eyeshadow");
     }
     
-    // Sort strings in alphabetical order
     uniqueCategories.sort((a, b) => a.localeCompare(b));
 
     const savedFilterValue = categoryFilter.value;
@@ -90,6 +138,7 @@ function updateCategoryDropdowns() {
 
 function renderGrid() {
     productGrid.innerHTML = '';
+    const mobileMode = isMobileDevice();
     
     const filtered = products.filter(product => {
         const searchText = searchBar.value.toLowerCase();
@@ -111,16 +160,22 @@ function renderGrid() {
         if (product.status === "Used Up") badgeClass = "badge-used-up";
 
         const formattedCost = product.cost ? `HKD$${product.cost}` : 'HKD$0';
-
-        // 2. Fixed: Handle image rendering fallback cleanly
+        
         let imageHTML = '';
-        if (product.image && product.image.startsWith('data:image') || product.image.startsWith('http')) {
+        // IF ON MOBILE: Completely ignore the image data to save memory and show a cute emoji instead
+        if (mobileMode) {
+            imageHTML = `
+                <div class="emoji-placeholder-tile">
+                    <span>${getEmojiForCategory(product.category)}</span>
+                </div>`;
+        } 
+        // IF ON PC: Render the image normally if it exists
+        else if (product.image && (product.image.startsWith('data:image') || product.image.startsWith('http'))) {
             imageHTML = `<img src="${product.image}" alt="${product.name}">`;
         } else {
             imageHTML = `
-                <div class="no-image-placeholder">
-                    <span>✨</span>
-                    ${product.brand}<br>${product.name}
+                <div class="emoji-placeholder-tile">
+                    <span>${getEmojiForCategory(product.category)}</span>
                 </div>`;
         }
 
@@ -143,11 +198,12 @@ function renderGrid() {
 function openModal(product) {
     activeProduct = product;
     
-    if (product.image && (product.image.startsWith('data:image') || product.image.startsWith('http'))) {
+    // Only display image element inside details modal on PC
+    if (!isMobileDevice() && product.image && (product.image.startsWith('data:image') || product.image.startsWith('http'))) {
         modalImage.src = product.image;
         modalImage.style.display = "block";
     } else {
-        modalImage.style.display = "none"; // Hide standard modal img tag if it's utilizing text fallback
+        modalImage.style.display = "none";
     }
     
     modalBrandInput.value = product.brand;
@@ -215,45 +271,6 @@ addNewCategoryBtn.addEventListener('click', () => {
     }
 });
 
-
-// Automatically resizes and compresses an image file to keep LocalStorage happy
-function compressImage(file, maxWidth = 300, quality = 0.6) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = event => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-
-                // Scale down the image dimensions if it's too wide
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // Convert to compressed JPEG data string
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-                resolve(compressedDataUrl);
-            };
-            img.onerror = err => reject(err);
-        };
-        reader.onerror = err => reject(err);
-    });
-}
-
-
-// 3. Fixed: Picture is optional. Saves text placeholder metadata if empty.
-// Handles adding a new product with automatic image compression
 addProductForm.addEventListener('submit', async function(e) {
     e.preventDefault();
 
@@ -262,12 +279,11 @@ addProductForm.addEventListener('submit', async function(e) {
     const costValue = document.getElementById('prodCost').value;
     let finalImage = 'PLACEHOLDER_TXT';
 
-    // If a file exists, compress it first!
     if (file) {
         try {
-            finalImage = await compressImage(file, 300, 0.6); // Max width 300px, 60% quality
+            finalImage = await compressImage(file, 400, 0.7);
         } catch (error) {
-            console.error("Compression failed, using fallback text:", error);
+            console.error("Compression failed:", error);
         }
     }
 
@@ -300,22 +316,15 @@ function finalizeProductAdd() {
 
 sortDateBtn.addEventListener('click', () => {
     currentSortAsc = !currentSortAsc;
-    products.sort((a, b) => {
-        const dateA = new Date(a.purchaseDate);
-        const dateB = new Date(b.purchaseDate);
-        return currentSortAsc ? dateA - dateB : dateB - dateA;
-    });
+    products.sort((a, b) => new Date(a.purchaseDate) - new Date(b.purchaseDate));
+    if (!currentSortAsc) products.reverse();
     renderGrid();
 });
 
-// 4. Fixed: Added Sort by Price Logic (Treats empty fields as 0)
 sortPriceBtn.addEventListener('click', () => {
     priceSortAsc = !priceSortAsc;
-    products.sort((a, b) => {
-        const priceA = a.cost ? parseFloat(a.cost) : 0;
-        const priceB = b.cost ? parseFloat(b.cost) : 0;
-        return priceSortAsc ? priceA - priceB : priceB - priceA;
-    });
+    products.sort((a, b) => (a.cost || 0) - (b.cost || 0));
+    if (!priceSortAsc) products.reverse();
     renderGrid();
 });
 
@@ -332,31 +341,37 @@ exportBtn.addEventListener('click', () => {
 syncBtn.addEventListener('click', function() {
     const confirmSync = confirm("This will clear your current screen and download the master inventory file from GitHub. Proceed?");
     if (confirmSync) {
-        localStorage.removeItem('makeup_inventory'); // Wipes local memory slot
-        window.location.reload(); // Reloads page, forcing loadDatabase() to run fresh
+        localStorage.removeItem('makeup_inventory');
+        window.location.reload();
     }
 });
 
 async function loadDatabase() {
+    const mobileMode = isMobileDevice();
+    
     if (!localStorage.getItem('makeup_inventory')) {
         try {
             const response = await fetch('products.json');
-            
-            // Check if the file actually exists on GitHub
-            if (!response.ok) {
-                throw new Error(`Could not find products.json on your server (Status: ${response.status}). Check your file name capitalization!`);
-            }
+            if (!response.ok) throw new Error(`Status: ${response.status}`);
             
             const data = await response.json();
-            products = data;
+            
+            if (mobileMode) {
+                // MOBILE PROTECTOR: If loading on a phone, strip images from phone's local memory completely so it can't crash.
+                // Your actual pictures remain completely safe inside your products.json file on GitHub!
+                products = data.map(item => {
+                    return { ...item, image: 'PLACEHOLDER_TXT' };
+                });
+            } else {
+                // PC MODE: Keep all high-resolution pictures loaded normally.
+                products = data;
+            }
+            
             saveToLocalStorage();
             renderGrid();
             updateCategoryDropdowns();
-            
         } catch (error) {
-            // This will now pop up an alert box on your screen telling you the exact error
-            alert("Database Load Error: " + error.message + "\n\nFalling back to default template.");
-            console.error(error);
+            console.error("Database Load Error: " + error.message);
         }
     }
 }
